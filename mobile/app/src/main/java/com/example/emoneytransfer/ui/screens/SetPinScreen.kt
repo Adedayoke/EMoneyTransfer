@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -82,6 +83,28 @@ fun SetPinScreen(
         }
     }
 
+    // Brief pause so user sees all 4 dots fill before transitioning
+    LaunchedEffect(pin) {
+        if (pin.length == 4 && step == 0) {
+            delay(150)
+            step = 1
+        }
+    }
+
+    LaunchedEffect(confirmPin) {
+        if (confirmPin.length == 4 && step == 1) {
+            delay(150)
+            if (confirmPin == pin) {
+                authViewModel.completeRegistration(pin)
+            } else {
+                error = "PINs don't match. Try again."
+                pin = ""
+                confirmPin = ""
+                step = 0
+            }
+        }
+    }
+
     val activePin = if (step == 0) pin else confirmPin
 
     fun onDigit(d: String) {
@@ -90,23 +113,10 @@ fun SetPinScreen(
         if (step == 0) {
             if (pin.length < 4) {
                 pin += d
-                if (pin.length == 4) {
-                    step = 1 // auto-advance to confirm
-                }
             }
         } else {
             if (confirmPin.length < 4) {
                 confirmPin += d
-                if (confirmPin.length == 4) {
-                    if (confirmPin == pin) {
-                        authViewModel.completeRegistration(pin)
-                    } else {
-                        error = "PINs don't match. Try again."
-                        pin = ""
-                        confirmPin = ""
-                        step = 0
-                    }
-                }
             }
         }
     }

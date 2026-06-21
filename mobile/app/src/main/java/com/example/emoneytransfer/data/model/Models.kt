@@ -62,3 +62,5 @@ data class Transaction(
 )
 
 data class TransactionsResponse(val transactions: List<Transaction>)
+
+data class AccountLookupResponse(val name: String, val account_number: String)

@@ -2,6 +2,7 @@ package com.example.emoneytransfer.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -351,7 +352,11 @@ fun DashboardScreen(
                     text = "See all",
                     fontSize = 12.sp,
                     color = Mint,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable(onClick = onViewHistory)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
         }
@@ -399,18 +404,7 @@ fun DashboardScreen(
                 }
             }
             else -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No transactions yet",
-                        fontSize = 14.sp,
-                        color = TextSecondary.copy(alpha = 0.5f)
-                    )
-                }
+                // Idle — loadRecent() hasn't finished yet; show nothing
             }
         }
 

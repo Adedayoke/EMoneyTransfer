@@ -24,15 +24,17 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -52,23 +54,37 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.example.emoneytransfer.data.local.TokenManager
 import com.example.emoneytransfer.ui.theme.Background
+import com.example.emoneytransfer.ui.theme.ColorReceived
+import com.example.emoneytransfer.ui.theme.ColorReceivedBg
 import com.example.emoneytransfer.ui.theme.ErrorRed
 import com.example.emoneytransfer.ui.theme.Mint
 import com.example.emoneytransfer.ui.theme.MintOnDark
 import com.example.emoneytransfer.ui.theme.Surface
 import com.example.emoneytransfer.ui.theme.SurfaceHighlight
+import com.example.emoneytransfer.ui.theme.SurfaceVariant
 import com.example.emoneytransfer.ui.theme.TextPrimary
 import com.example.emoneytransfer.ui.theme.TextSecondary
+import com.example.emoneytransfer.ui.viewmodel.LookupState
 import com.example.emoneytransfer.ui.viewmodel.WalletState
 import com.example.emoneytransfer.ui.viewmodel.WalletViewModel
 import com.example.emoneytransfer.util.BiometricHelper
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+private fun formatAcct(acc: String) =
+    if (acc.length == 10) "${acc.substring(0, 4)} ${acc.substring(4, 8)} ${acc.substring(8)}"
+    else acc
+
+private fun formatAmount(raw: String): String {
+    val d = raw.toDoubleOrNull() ?: return raw
+    return "%,.2f".format(d)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,12 +94,17 @@ fun TransferScreen(
     walletViewModel: WalletViewModel
 ) {
     val transferState by walletViewModel.transferState.collectAsState()
+    val lookupState by walletViewModel.lookupState.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var recipientAccount by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
+
+    // Sheet visibility
+    var showConfirmSheet by remember { mutableStateOf(false) }
     var showPinSheet by remember { mutableStateOf(false) }
+
     var pinEntry by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf("") }
     var showSuccessDialog by remember { mutableStateOf(false) }
@@ -91,6 +112,16 @@ fun TransferScreen(
     var successReference by remember { mutableStateOf("") }
     val canUseBiometric = remember { BiometricHelper.canAuthenticate(context) }
 
+    // Auto-lookup when 10 digits entered
+    LaunchedEffect(recipientAccount) {
+        if (recipientAccount.length == 10) {
+            walletViewModel.lookupAccount(recipientAccount)
+        } else {
+            walletViewModel.resetLookupState()
+        }
+    }
+
+    // Transfer result handler
     LaunchedEffect(transferState) {
         when (val state = transferState) {
             is WalletState.TransferSuccess -> {
@@ -110,13 +141,14 @@ fun TransferScreen(
         }
     }
 
-    // Auto-submit when 4 digits entered
+    // Auto-submit when 4 PIN digits entered
     LaunchedEffect(pinEntry) {
         if (pinEntry.length == 4 && transferState !is WalletState.Loading) {
             walletViewModel.transfer(recipientAccount.trim(), amount.trim(), pinEntry)
         }
     }
 
+    // ── Success dialog ──────────────────────────────────────────────────────
     if (showSuccessDialog) {
         AlertDialog(
             onDismissRequest = {},
@@ -153,6 +185,7 @@ fun TransferScreen(
                     recipientAccount = ""
                     amount = ""
                     walletViewModel.resetTransferState()
+                    walletViewModel.resetLookupState()
                     walletViewModel.loadBalance()
                     onSuccess()
                 }) {
@@ -162,7 +195,142 @@ fun TransferScreen(
         )
     }
 
-    // PIN Bottom Sheet
+    // ── Confirmation sheet ──────────────────────────────────────────────────
+    if (showConfirmSheet) {
+        val recipient = lookupState as? LookupState.Found
+        ModalBottomSheet(
+            onDismissRequest = { showConfirmSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 28.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Confirm Transfer",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // Recipient card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(SurfaceVariant)
+                        .padding(20.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Avatar circle with initial
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(ColorReceivedBg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = recipient?.name?.firstOrNull()?.uppercase() ?: "?",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorReceived
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = "TO",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondary,
+                                letterSpacing = 1.2.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = recipient?.name ?: "",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = formatAcct(recipient?.account ?: recipientAccount),
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Amount — big and bold
+                Text(
+                    text = "AMOUNT",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary,
+                    letterSpacing = 1.2.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "₦${formatAmount(amount)}",
+                    fontSize = 42.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary,
+                    textAlign = TextAlign.Center,
+                    letterSpacing = (-1).sp
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { showConfirmSheet = false },
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF333333)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
+                    ) {
+                        Text("Cancel", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            showConfirmSheet = false
+                            walletViewModel.resetTransferState()
+                            pinEntry = ""
+                            pinError = ""
+                            showPinSheet = true
+                        },
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Mint,
+                            contentColor = MintOnDark
+                        )
+                    ) {
+                        Text("Confirm", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    }
+
+    // ── PIN sheet ───────────────────────────────────────────────────────────
     if (showPinSheet) {
         ModalBottomSheet(
             onDismissRequest = {
@@ -189,7 +357,7 @@ fun TransferScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Authorise transfer of ₦${amount.trim()}",
+                    text = "Authorise transfer of ₦${formatAmount(amount)}",
                     fontSize = 13.sp,
                     color = TextSecondary
                 )
@@ -227,7 +395,8 @@ fun TransferScreen(
                         text = pinError,
                         color = ErrorRed,
                         fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 40.dp)
+                        modifier = Modifier.padding(horizontal = 40.dp),
+                        textAlign = TextAlign.Center
                     )
                 }
 
@@ -251,7 +420,7 @@ fun TransferScreen(
                                                 if (savedPin != null) {
                                                     pinEntry = savedPin
                                                 } else {
-                                                    pinError = "No PIN saved. Enter PIN manually."
+                                                    pinError = "No PIN saved yet. Enter PIN manually."
                                                 }
                                             }
                                         },
@@ -275,19 +444,19 @@ fun TransferScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Numpad
-                val rows = listOf(
+                val isLoading = transferState is WalletState.Loading
+                val numpadRows = listOf(
                     listOf("1", "2", "3"),
                     listOf("4", "5", "6"),
                     listOf("7", "8", "9"),
                     listOf("", "0", "⌫")
                 )
-                val isLoading = transferState is WalletState.Loading
 
                 Column(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    rows.forEach { row ->
+                    numpadRows.forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                             row.forEach { key ->
                                 when {
@@ -342,7 +511,7 @@ fun TransferScreen(
         }
     }
 
-    // Main content
+    // ── Main form ───────────────────────────────────────────────────────────
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -396,6 +565,49 @@ fun TransferScreen(
                     shape = RoundedCornerShape(10.dp),
                     colors = darkFieldColors()
                 )
+
+                // Live lookup feedback below the field
+                when (val state = lookupState) {
+                    is LookupState.Loading -> {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = TextSecondary,
+                                strokeWidth = 1.5.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Looking up account...", fontSize = 12.sp, color = TextSecondary)
+                        }
+                    }
+                    is LookupState.Found -> {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = Mint,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = state.name,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Mint
+                            )
+                        }
+                    }
+                    is LookupState.Error -> {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = state.message,
+                            fontSize = 12.sp,
+                            color = ErrorRed
+                        )
+                    }
+                    else -> {}
+                }
             }
         }
 
@@ -438,17 +650,13 @@ fun TransferScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Button(
-            onClick = {
-                walletViewModel.resetTransferState()
-                pinEntry = ""
-                pinError = ""
-                showPinSheet = true
-            },
+            onClick = { showConfirmSheet = true },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(54.dp),
             shape = RoundedCornerShape(14.dp),
-            enabled = recipientAccount.length == 10 && amount.isNotBlank(),
+            // Only enabled once we've confirmed the account exists
+            enabled = lookupState is LookupState.Found && amount.isNotBlank() && amount.toDoubleOrNull() != null,
             colors = ButtonDefaults.buttonColors(
                 containerColor = Mint,
                 contentColor = MintOnDark,

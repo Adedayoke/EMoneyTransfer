@@ -25,6 +25,32 @@ router.get('/balance', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/wallet/lookup?account=XXXXXXXXXX
+router.get('/lookup', authMiddleware, async (req, res) => {
+  try {
+    const { account } = req.query;
+    if (!account || !/^\d{10}$/.test(account)) {
+      return res.status(400).json({ error: 'Invalid account number' });
+    }
+
+    const requesterId = req.user.id;
+    const user = await prisma.user.findUnique({
+      where: { accountNumber: account },
+      select: { id: true, fullName: true, accountNumber: true }
+    });
+
+    if (!user) return res.status(404).json({ error: 'No account found with that number' });
+    if (user.id === requesterId) {
+      return res.status(400).json({ error: 'You cannot transfer to your own account' });
+    }
+
+    res.json({ name: user.fullName, account_number: user.accountNumber });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/wallet/transfer
 router.post('/transfer', authMiddleware, async (req, res) => {
   try {

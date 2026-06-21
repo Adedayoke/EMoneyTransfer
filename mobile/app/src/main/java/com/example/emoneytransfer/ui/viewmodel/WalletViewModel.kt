@@ -14,6 +14,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+sealed class LookupState {
+    object Idle : LookupState()
+    object Loading : LookupState()
+    data class Found(val name: String, val account: String) : LookupState()
+    data class Error(val message: String) : LookupState()
+}
+
 sealed class WalletState {
     object Idle : WalletState()
     object Loading : WalletState()
@@ -44,6 +51,9 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _recentState = MutableStateFlow<WalletState>(WalletState.Idle)
     val recentState: StateFlow<WalletState> = _recentState.asStateFlow()
+
+    private val _lookupState = MutableStateFlow<LookupState>(LookupState.Idle)
+    val lookupState: StateFlow<LookupState> = _lookupState.asStateFlow()
 
     fun loadBalance() {
         viewModelScope.launch {
@@ -135,6 +145,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
 
     fun loadRecent() {
         viewModelScope.launch {
+            _recentState.value = WalletState.Loading
             val token = tokenManager.token.first() ?: return@launch
             try {
                 val response = api.getTransactionHistory("Bearer $token")
@@ -147,6 +158,28 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
     }
+
+    fun lookupAccount(account: String) {
+        viewModelScope.launch {
+            if (account.length != 10) { _lookupState.value = LookupState.Idle; return@launch }
+            _lookupState.value = LookupState.Loading
+            val token = tokenManager.token.first() ?: return@launch
+            try {
+                val response = api.lookupAccount("Bearer $token", account)
+                if (response.isSuccessful) {
+                    val body = response.body()!!
+                    _lookupState.value = LookupState.Found(body.name, body.account_number)
+                } else {
+                    val msg = parseError(response.errorBody()?.string()) ?: "Account not found"
+                    _lookupState.value = LookupState.Error(msg)
+                }
+            } catch (e: Exception) {
+                _lookupState.value = LookupState.Error("Cannot reach server")
+            }
+        }
+    }
+
+    fun resetLookupState() { _lookupState.value = LookupState.Idle }
 
     fun resetTransferState() { _transferState.value = WalletState.Idle }
 
