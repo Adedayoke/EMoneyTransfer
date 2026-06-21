@@ -9,25 +9,26 @@ router.get('/history', authMiddleware, async (req, res) => {
     const userId = req.user.id;
 
     const transactions = await prisma.transaction.findMany({
-      where: {
-        OR: [{ senderId: userId }, { receiverId: userId }]
-      },
+      where: { OR: [{ senderId: userId }, { receiverId: userId }] },
       include: {
-        sender: { select: { fullName: true, email: true } },
-        receiver: { select: { fullName: true, email: true } }
+        sender: { select: { fullName: true, email: true, accountNumber: true } },
+        receiver: { select: { fullName: true, email: true, accountNumber: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
 
     const formatted = transactions.map((t) => ({
       id: t.id,
+      reference: t.reference ?? '',
       amount: parseFloat(t.amount.toString()).toFixed(2),
       status: t.status,
       created_at: t.createdAt.toISOString(),
       sender_name: t.sender.fullName,
       sender_email: t.sender.email,
+      sender_account: t.sender.accountNumber ?? '',
       receiver_name: t.receiver.fullName,
       receiver_email: t.receiver.email,
+      receiver_account: t.receiver.accountNumber ?? '',
       direction: t.senderId === userId ? 'sent' : 'received'
     }));
 

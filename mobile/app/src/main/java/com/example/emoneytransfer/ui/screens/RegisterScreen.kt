@@ -23,14 +23,12 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +42,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.emoneytransfer.ui.theme.Background
 import com.example.emoneytransfer.ui.theme.ErrorRed
 import com.example.emoneytransfer.ui.theme.Mint
@@ -57,7 +54,8 @@ import com.example.emoneytransfer.ui.viewmodel.AuthViewModel
 @Composable
 fun RegisterScreen(
     onNavigateToLogin: () -> Unit,
-    authViewModel: AuthViewModel = viewModel()
+    onNavigateToSetPin: () -> Unit,
+    authViewModel: AuthViewModel
 ) {
     val registerState by authViewModel.registerState.collectAsState()
 
@@ -65,13 +63,6 @@ fun RegisterScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-
-    LaunchedEffect(registerState) {
-        if (registerState is AuthState.Success) {
-            authViewModel.resetRegisterState()
-            onNavigateToLogin()
-        }
-    }
 
     Box(
         modifier = Modifier
@@ -90,10 +81,7 @@ fun RegisterScreen(
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            IconButton(
-                onClick = onNavigateToLogin,
-                modifier = Modifier.padding(start = 0.dp)
-            ) {
+            IconButton(onClick = onNavigateToLogin) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
@@ -110,7 +98,7 @@ fun RegisterScreen(
                 color = TextPrimary
             )
             Text(
-                text = "It only takes a minute",
+                text = "Step 1 of 2 — your details",
                 fontSize = 15.sp,
                 color = TextSecondary
             )
@@ -180,15 +168,16 @@ fun RegisterScreen(
             Spacer(modifier = Modifier.height(32.dp))
 
             Button(
-                onClick = { authViewModel.register(fullName.trim(), email.trim(), password) },
+                onClick = {
+                    authViewModel.resetRegisterState()
+                    authViewModel.savePendingRegistration(fullName.trim(), email.trim(), password)
+                    onNavigateToSetPin()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
                 shape = RoundedCornerShape(14.dp),
-                enabled = registerState !is AuthState.Loading
-                        && fullName.isNotBlank()
-                        && email.isNotBlank()
-                        && password.length >= 6,
+                enabled = fullName.isNotBlank() && email.isNotBlank() && password.length >= 6,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Mint,
                     contentColor = MintOnDark,
@@ -196,19 +185,7 @@ fun RegisterScreen(
                     disabledContentColor = MintOnDark.copy(alpha = 0.5f)
                 )
             ) {
-                if (registerState is AuthState.Loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        color = MintOnDark,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(
-                        "Get Started",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                Text("Next", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -216,7 +193,10 @@ fun RegisterScreen(
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Already have an account? ", color = TextSecondary, fontSize = 14.sp)
-                    TextButton(onClick = onNavigateToLogin, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                    TextButton(
+                        onClick = onNavigateToLogin,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    ) {
                         Text("Sign In", color = Mint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }

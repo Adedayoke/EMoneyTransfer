@@ -3,7 +3,8 @@ package com.example.emoneytransfer.data.model
 data class RegisterRequest(
     val full_name: String,
     val email: String,
-    val password: String
+    val password: String,
+    val pin: String
 )
 
 data class LoginRequest(
@@ -12,8 +13,9 @@ data class LoginRequest(
 )
 
 data class TransferRequest(
-    val recipient_email: String,
-    val amount: Double
+    val recipient_account: String,
+    val amount: Double,
+    val pin: String
 )
 
 data class MessageResponse(val message: String)
@@ -21,7 +23,14 @@ data class MessageResponse(val message: String)
 data class UserResponse(
     val id: Int,
     val full_name: String,
-    val email: String
+    val email: String,
+    val account_number: String?
+)
+
+data class RegisterResponse(
+    val message: String,
+    val token: String,
+    val user: UserResponse
 )
 
 data class LoginResponse(
@@ -39,13 +48,16 @@ data class TransferResponse(
 
 data class Transaction(
     val id: Int,
+    val reference: String?,
     val amount: String,
     val status: String,
     val created_at: String,
     val sender_name: String,
     val sender_email: String,
+    val sender_account: String?,
     val receiver_name: String,
     val receiver_email: String,
+    val receiver_account: String?,
     val direction: String
 )
 

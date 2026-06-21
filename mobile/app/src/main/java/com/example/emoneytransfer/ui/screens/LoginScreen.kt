@@ -1,8 +1,11 @@
 package com.example.emoneytransfer.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,10 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -37,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +51,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.fragment.app.FragmentActivity
 import com.example.emoneytransfer.data.local.TokenManager
 import com.example.emoneytransfer.ui.theme.Background
 import com.example.emoneytransfer.ui.theme.ErrorRed
@@ -57,13 +63,15 @@ import com.example.emoneytransfer.ui.theme.TextPrimary
 import com.example.emoneytransfer.ui.theme.TextSecondary
 import com.example.emoneytransfer.ui.viewmodel.AuthState
 import com.example.emoneytransfer.ui.viewmodel.AuthViewModel
+import com.example.emoneytransfer.util.BiometricHelper
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNavigateToRegister: () -> Unit,
-    authViewModel: AuthViewModel = viewModel()
+    authViewModel: AuthViewModel
 ) {
     val loginState by authViewModel.loginState.collectAsState()
     val context = LocalContext.current
@@ -71,10 +79,19 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var showBiometric by remember { mutableStateOf(false) }
+    var biometricError by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         val token = TokenManager(context).token.first()
-        if (token != null) onLoginSuccess()
+        if (token != null) {
+            onLoginSuccess()
+            return@LaunchedEffect
+        }
+        val storedEmail = TokenManager(context).userEmail.first()
+        val storedPass = TokenManager(context).userPassword.first()
+        showBiometric = BiometricHelper.canAuthenticate(context) &&
+                storedEmail != null && storedPass != null
     }
 
     LaunchedEffect(loginState) {
@@ -101,7 +118,6 @@ fun LoginScreen(
         ) {
             Spacer(modifier = Modifier.height(56.dp))
 
-            // Brand mark
             Text(
                 text = "₦",
                 fontSize = 40.sp,
@@ -134,7 +150,7 @@ fun LoginScreen(
             )
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it },
+                onValueChange = { email = it; biometricError = "" },
                 placeholder = { Text("you@example.com", color = TextSecondary.copy(alpha = 0.5f)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
@@ -154,7 +170,7 @@ fun LoginScreen(
             )
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it },
+                onValueChange = { password = it; biometricError = "" },
                 placeholder = { Text("••••••••", color = TextSecondary.copy(alpha = 0.5f)) },
                 singleLine = true,
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -174,13 +190,14 @@ fun LoginScreen(
                 colors = darkFieldColors()
             )
 
-            if (loginState is AuthState.Error) {
+            val errorMsg = when {
+                loginState is AuthState.Error -> (loginState as AuthState.Error).message
+                biometricError.isNotEmpty() -> biometricError
+                else -> null
+            }
+            if (errorMsg != null) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = (loginState as AuthState.Error).message,
-                    color = ErrorRed,
-                    fontSize = 13.sp
-                )
+                Text(text = errorMsg, color = ErrorRed, fontSize = 13.sp)
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -206,11 +223,51 @@ fun LoginScreen(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text(
-                        "Sign In",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Text("Sign In", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            if (showBiometric) {
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(CircleShape)
+                            .background(Surface)
+                            .border(1.dp, Color(0xFF333333), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconButton(onClick = {
+                            (context as? FragmentActivity)?.let { activity ->
+                                BiometricHelper.showPrompt(
+                                    activity = activity,
+                                    title = "Sign in",
+                                    subtitle = "Use fingerprint to sign in",
+                                    onSuccess = { authViewModel.loginWithBiometric() },
+                                    onError = { msg -> biometricError = msg }
+                                )
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Fingerprint,
+                                contentDescription = "Sign in with fingerprint",
+                                tint = Mint,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text("or use fingerprint", color = TextSecondary, fontSize = 13.sp)
                 }
             }
 

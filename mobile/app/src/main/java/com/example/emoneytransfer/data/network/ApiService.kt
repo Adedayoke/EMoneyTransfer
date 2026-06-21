@@ -3,8 +3,8 @@ package com.example.emoneytransfer.data.network
 import com.example.emoneytransfer.data.model.BalanceResponse
 import com.example.emoneytransfer.data.model.LoginRequest
 import com.example.emoneytransfer.data.model.LoginResponse
-import com.example.emoneytransfer.data.model.MessageResponse
 import com.example.emoneytransfer.data.model.RegisterRequest
+import com.example.emoneytransfer.data.model.RegisterResponse
 import com.example.emoneytransfer.data.model.TransactionsResponse
 import com.example.emoneytransfer.data.model.TransferRequest
 import com.example.emoneytransfer.data.model.TransferResponse
@@ -17,7 +17,7 @@ import retrofit2.http.POST
 interface ApiService {
 
     @POST("api/auth/register")
-    suspend fun register(@Body request: RegisterRequest): Response<MessageResponse>
+    suspend fun register(@Body request: RegisterRequest): Response<RegisterResponse>
 
     @POST("api/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>

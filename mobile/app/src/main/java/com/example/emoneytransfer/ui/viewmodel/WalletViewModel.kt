@@ -17,7 +17,11 @@ import kotlinx.coroutines.launch
 sealed class WalletState {
     object Idle : WalletState()
     object Loading : WalletState()
-    data class BalanceLoaded(val balance: String, val userName: String) : WalletState()
+    data class BalanceLoaded(
+        val balance: String,
+        val userName: String,
+        val accountNumber: String = ""
+    ) : WalletState()
     data class TransferSuccess(val newBalance: String, val reference: String) : WalletState()
     data class HistoryLoaded(val transactions: List<Transaction>) : WalletState()
     data class Error(val message: String) : WalletState()
@@ -38,18 +42,22 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
     private val _historyState = MutableStateFlow<WalletState>(WalletState.Idle)
     val historyState: StateFlow<WalletState> = _historyState.asStateFlow()
 
+    private val _recentState = MutableStateFlow<WalletState>(WalletState.Idle)
+    val recentState: StateFlow<WalletState> = _recentState.asStateFlow()
+
     fun loadBalance() {
         viewModelScope.launch {
             _balanceState.value = WalletState.Loading
             val token = tokenManager.token.first()
             val name = tokenManager.userName.first()
+            val acct = tokenManager.accountNumber.first() ?: ""
             if (token == null) { _balanceState.value = WalletState.TokenExpired; return@launch }
             try {
                 val response = api.getBalance("Bearer $token")
                 when {
                     response.isSuccessful -> {
                         val balance = response.body()?.balance ?: "0.00"
-                        _balanceState.value = WalletState.BalanceLoaded(balance, name ?: "User")
+                        _balanceState.value = WalletState.BalanceLoaded(balance, name ?: "User", acct)
                     }
                     response.code() == 401 -> {
                         tokenManager.clearAll()
@@ -58,12 +66,12 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     else -> _balanceState.value = WalletState.Error("Failed to load balance")
                 }
             } catch (e: Exception) {
-                _balanceState.value = WalletState.Error("Cannot reach server. Is it running?")
+                _balanceState.value = WalletState.Error("Cannot reach server. Check your connection.")
             }
         }
     }
 
-    fun transfer(recipientEmail: String, amount: String) {
+    fun transfer(recipientAccount: String, amount: String, pin: String) {
         viewModelScope.launch {
             val parsedAmount = amount.toDoubleOrNull()
             if (parsedAmount == null || parsedAmount <= 0) {
@@ -74,7 +82,10 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
             val token = tokenManager.token.first()
             if (token == null) { _transferState.value = WalletState.TokenExpired; return@launch }
             try {
-                val response = api.transfer("Bearer $token", TransferRequest(recipientEmail, parsedAmount))
+                val response = api.transfer(
+                    "Bearer $token",
+                    TransferRequest(recipientAccount, parsedAmount, pin)
+                )
                 when {
                     response.isSuccessful -> {
                         val body = response.body()!!
@@ -84,8 +95,8 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                         )
                     }
                     response.code() == 401 -> {
-                        tokenManager.clearAll()
-                        _transferState.value = WalletState.TokenExpired
+                        val msg = parseError(response.errorBody()?.string()) ?: "Incorrect PIN"
+                        _transferState.value = WalletState.Error(msg)
                     }
                     else -> {
                         val msg = parseError(response.errorBody()?.string()) ?: "Transfer failed"
@@ -93,7 +104,7 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
             } catch (e: Exception) {
-                _transferState.value = WalletState.Error("Cannot reach server. Is it running?")
+                _transferState.value = WalletState.Error("Cannot reach server. Check your connection.")
             }
         }
     }
@@ -117,7 +128,22 @@ class WalletViewModel(application: Application) : AndroidViewModel(application) 
                     else -> _historyState.value = WalletState.Error("Failed to load history")
                 }
             } catch (e: Exception) {
-                _historyState.value = WalletState.Error("Cannot reach server. Is it running?")
+                _historyState.value = WalletState.Error("Cannot reach server. Check your connection.")
+            }
+        }
+    }
+
+    fun loadRecent() {
+        viewModelScope.launch {
+            val token = tokenManager.token.first() ?: return@launch
+            try {
+                val response = api.getTransactionHistory("Bearer $token")
+                if (response.isSuccessful) {
+                    val all = response.body()?.transactions ?: emptyList()
+                    _recentState.value = WalletState.HistoryLoaded(all.take(4))
+                }
+            } catch (e: Exception) {
+                // Recent transactions are non-critical; fail silently
             }
         }
     }

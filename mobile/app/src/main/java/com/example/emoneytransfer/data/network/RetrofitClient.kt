@@ -10,7 +10,7 @@ object RetrofitClient {
 
     // Use 10.0.2.2 for emulator, or your laptop's local IP for a physical phone
     // e.g. "http://192.168.1.105:3000/"
-    private const val BASE_URL = "http://10.0.2.2:3000/"
+    private const val BASE_URL = "https://emoneytransfer.vercel.app/"
 
     val apiService: ApiService by lazy {
         val logging = HttpLoggingInterceptor().apply {
